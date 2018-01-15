@@ -46,7 +46,7 @@ public class AuthleteApiFactory
      * Known implementations of AuthleteApi.
      */
     private static final String[] sKnownImpls = {
-        IMPL_JAX_RS,
+//        IMPL_JAX_RS,
         IMPL_HTTP_URL_CONNECTION
     };
 
