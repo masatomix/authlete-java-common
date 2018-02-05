@@ -22,13 +22,29 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.Authenticator;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.PasswordAuthentication;
+import java.net.Proxy;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.X509TrustManager;
+
 import com.authlete.common.conf.AuthleteConfiguration;
 import com.authlete.common.dto.ApiResponse;
 import com.authlete.common.dto.AuthorizationFailRequest;
@@ -424,6 +440,36 @@ class AuthleteApiImpl implements AuthleteApi
         }
     }
 
+    private static SSLContext createSSLContext() {
+        SSLContext sslContext = null;
+        try {
+            sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null,
+                    new X509TrustManager[] { new X509TrustManager() {
+                        @Override
+                        public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
+                        @Override
+                        public void checkServerTrusted(X509Certificate[] chain,String authType) throws CertificateException {}
+                        @Override
+                        public X509Certificate[] getAcceptedIssuers() {return new X509Certificate[0];}
+                    } }, new SecureRandom());
+            // HttpsURLConnection
+            // .setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (KeyManagementException e) {
+            e.printStackTrace();
+        }
+        return sslContext;
+    }
+
+    private static HostnameVerifier createHostNameVerifier() {
+        return new HostnameVerifier() {
+            @Override
+            public boolean verify(String hostname, SSLSession session) {return true;}
+        };
+    }
 
     private static HttpURLConnection openConnection(
             HttpMethod method, BasicCredentials credentials, String baseUrl,
@@ -433,8 +479,33 @@ class AuthleteApiImpl implements AuthleteApi
         // URL of an Authlete API.
         URL url = buildUrl(baseUrl, path, queryParams);
 
+        
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 8888));
+        
+        final String authUser = "user";
+        final String authPassword = "pass";
+        Authenticator.setDefault(
+           new Authenticator() {
+              @Override
+              public PasswordAuthentication getPasswordAuthentication() {
+                 return new PasswordAuthentication(
+                       authUser, authPassword.toCharArray());
+              }
+           }
+        );
+
+        System.setProperty("http.proxyUser", authUser);
+        System.setProperty("http.proxyPassword", authPassword);
+        
+        HttpsURLConnection.setDefaultSSLSocketFactory( createSSLContext().getSocketFactory());
+        
+        // setup a hostname verifier that verifies everything
+//        HttpsURLConnection.setDefaultHostnameVerifier(createHostNameVerifier() );
+        
+        
         // Open a connection to the Authlete API.
-        HttpURLConnection con = (HttpURLConnection)url.openConnection();
+        HttpURLConnection con = (HttpURLConnection)url.openConnection(proxy);
+//        HttpURLConnection con = (HttpURLConnection)url.openConnection();
 
         // Set HTTP method.
         con.setRequestMethod(method.name());
